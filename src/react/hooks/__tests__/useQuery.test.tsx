@@ -711,7 +711,7 @@ describe('useQuery Hook', () => {
       );
 
       const { result, waitForNextUpdate } = renderHook(
-        () => useQuery(query),
+        () => useQuery1(query),
         { wrapper },
       );
 
@@ -748,7 +748,7 @@ describe('useQuery Hook', () => {
 
       const onError = jest.fn();
       const { result, waitForNextUpdate } = renderHook(
-        () => useQuery(query, {
+        () => useQuery1(query, {
           onError,
           notifyOnNetworkStatusChange: true,
         }),
@@ -796,7 +796,7 @@ describe('useQuery Hook', () => {
       );
 
       const { result, rerender, waitForNextUpdate } = renderHook(
-        () => useQuery(query),
+        () => useQuery1(query),
         { wrapper },
       );
 
@@ -843,7 +843,7 @@ describe('useQuery Hook', () => {
       );
 
       const { result, rerender, waitForNextUpdate } = renderHook(
-        () => useQuery(query, { onError: () => {}, onCompleted: () => {} }),
+        () => useQuery1(query, { onError: () => {}, onCompleted: () => {} }),
         { wrapper },
       );
 
@@ -895,7 +895,7 @@ describe('useQuery Hook', () => {
       );
 
       const { result, waitForNextUpdate } = renderHook(
-        () => useQuery(query, { notifyOnNetworkStatusChange: true }),
+        () => useQuery1(query, { notifyOnNetworkStatusChange: true }),
         { wrapper },
       );
 
@@ -955,7 +955,7 @@ describe('useQuery Hook', () => {
       );
 
       const { result, waitForNextUpdate } = renderHook(
-        () => useQuery(query, { notifyOnNetworkStatusChange: true }),
+        () => useQuery1(query, { notifyOnNetworkStatusChange: true }),
         { wrapper },
       );
 
@@ -1020,7 +1020,7 @@ describe('useQuery Hook', () => {
       );
 
       const { result, waitForNextUpdate } = renderHook(
-        () => useQuery(query, { notifyOnNetworkStatusChange: true }),
+        () => useQuery1(query, { notifyOnNetworkStatusChange: true }),
         { wrapper },
       );
 
