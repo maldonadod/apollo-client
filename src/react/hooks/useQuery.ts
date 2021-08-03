@@ -69,12 +69,6 @@ function prepareOptions<TData, TVariables>(
 }
 
 
-// The interface expected by RenderPromises
-interface QueryData<TData, TVariables> {
-  getOptions(): QueryDataOptions<TData, TVariables>;
-  fetchData(): Promise<void> | boolean;
-}
-
 class QueryData<TData, TVariables> {
   public isMounted: boolean;
   public context: ApolloContextValue;
@@ -171,7 +165,7 @@ class QueryData<TData, TVariables> {
       if (this.context && this.context.renderPromises) {
         this.currentObservable = this.context.renderPromises.getSSRObservable(
           this.options,
-        );
+        ) || undefined;
       }
 
       if (!this.currentObservable) {
@@ -313,7 +307,7 @@ class QueryData<TData, TVariables> {
     this.currentObservable && this.currentObservable.resetQueryStoreErrors();
 
     if (this.context.renderPromises && result.loading && !skip) {
-      this.context.renderPromises!.addQueryPromise(this, () => null);
+      this.context.renderPromises.addQueryPromise(this as any, () => null);
     }
 
     // TODO(brian): Stop assigning this here!!!!
@@ -547,6 +541,12 @@ export function useQuery<TData = any, TVariables = OperationVariables>(
 //TODO
 //- SSR
 
+// The interface expected by RenderPromises
+export interface QueryData1<TData, TVariables> {
+  getOptions(): QueryDataOptions<TData, TVariables>;
+  fetchData(): Promise<void> | boolean;
+}
+
 export function useQuery1<
   TData = any,
   TVariables = OperationVariables,
@@ -563,18 +563,49 @@ export function useQuery1<
     'ApolloClient instance in via options.',
   );
   verifyDocumentType(query, DocumentType.Query);
-  const options = useMemo(() => {
-    const { skip, ...options } = { ...hookOptions, query };
+  const { skip, ssr, partialRefetch, options } = useMemo(() => {
+    const { skip, ssr, partialRefetch, ...options } = { ...hookOptions, query };
     if (skip) {
       options.fetchPolicy = 'standby';
+    } else if (
+      context.renderPromises &&
+      (
+        options.fetchPolicy === 'network-only' ||
+        options.fetchPolicy === 'cache-and-network'
+      )
+    ) {
+      options.fetchPolicy = 'cache-first';
     } else if (!options.fetchPolicy) {
+      // cache-first is the default policy, but we explicitly assign it here so
+      // the cache policies computed based on optiosn can be cleared
       options.fetchPolicy = 'cache-first';
     }
 
-    return options;
-  }, [hookOptions]);
+    return { skip, ssr, partialRefetch, options };
+  }, [hookOptions, context.renderPromises]);
+
   const { onCompleted, onError } = options;
-  const [obsQuery, setObsQuery] = useState(() => client.watchQuery(options));
+  const [obsQuery, setObsQuery] = useState(() => {
+    // See if there is an existing observable that was used to fetch the same
+    // data and if so, use it instead since it will contain the proper queryId
+    // to fetch the result set. This is used during SSR.
+    let obsQuery: ObservableQuery<TData, TVariables> | null = null;
+    if (context.renderPromises) {
+      obsQuery = context.renderPromises.getSSRObservable(options);
+    }
+
+    if (!obsQuery) {
+      obsQuery = client.watchQuery(options);
+      if (context.renderPromises) {
+        context.renderPromises.registerSSRObservable(
+          obsQuery,
+          options,
+        );
+      }
+    }
+
+    return obsQuery;
+  });
   let [result, setResult] = useState(() => obsQuery.getCurrentResult());
   const prevRef = useRef<{
     client: ApolloClient<unknown>,
@@ -614,6 +645,10 @@ export function useQuery1<
   }, [obsQuery, client, query, options]);
 
   useEffect(() => {
+    if (client.disableNetworkFetches || context.renderPromises) {
+      return;
+    }
+
     function onNext() {
       const previousResult = prevRef.current.result;
       // We use `getCurrentResult()` instead of the callback argument because
@@ -673,7 +708,7 @@ export function useQuery1<
 
     let sub = obsQuery.subscribe(onNext, onError);
     return () => sub.unsubscribe();
-  }, [obsQuery]);
+  }, [obsQuery, client.disableNetworkFetches, context.renderPromises]);
 
   const obsQueryFields = useMemo(() => ({
     refetch: obsQuery.refetch.bind(obsQuery),
@@ -695,6 +730,21 @@ export function useQuery1<
     // TODO: Do we need to add onCompleted and onError to the dependency array
   }, [result, onCompleted, onError]);
 
+  useEffect(() => {
+    if (context.renderPromises && result.loading && ssr !== false) {
+      const queryData: QueryData1<TData, TVariables> = {
+        getOptions() {
+          return options;
+        },
+
+      };
+      context.renderPromises.addQueryPromise(
+        queryData as any,
+        () => null,
+      );
+    }
+
+  }, [result, context.renderPromises, ssr, options,]);
 
   // TODO: This effect should be removed when partialRefetch is removed.
   useEffect(() => {
@@ -707,7 +757,7 @@ export function useQuery1<
     // exist, and they're all of a sudden stripped away. To help avoid
     // this we'll attempt to refetch the `Query` data.
     if (
-      hookOptions?.partialRefetch &&
+      partialRefetch &&
       result.partial &&
       (!result.data || Object.keys(result.data).length === 0) &&
       obsQuery.options.fetchPolicy !== 'cache-only'
@@ -720,13 +770,13 @@ export function useQuery1<
       setTimeout(() => obsQuery.refetch());
     }
   }, [
-    hookOptions?.partialRefetch,
+    partialRefetch,
     result.data,
     result.partial,
     obsQuery.options.fetchPolicy,
   ]);
 
-  if (hookOptions?.skip) {
+  if (skip) {
     // When skipping a query (ie. we're not querying for data but still want to
     // render children), make sure the `data` is cleared out and `loading` is
     // set to `false` (since we aren't loading anything).
@@ -738,7 +788,7 @@ export function useQuery1<
     // changing this is breaking, so we'll have to wait until Apollo Client 4.0
     // to address this.
     result = {
-      data: void 0,
+      data: void 0 as unknown as TData,
       error: void 0,
       loading: false,
       networkStatus: NetworkStatus.ready,
