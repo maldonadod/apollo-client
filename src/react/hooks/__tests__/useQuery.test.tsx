@@ -1921,7 +1921,7 @@ describe('useQuery Hook', () => {
               someVar: 'abc123'
             }
           },
-          result: { data: undefined },
+          result: { data: {} },
         },
         {
           request: {
@@ -1940,19 +1940,19 @@ describe('useQuery Hook', () => {
         cache: new InMemoryCache(),
       });
 
-      const wrapper = ({ children }: any) => (
-        <ApolloProvider client={client}>
-          {children}
-        </ApolloProvider>
-      );
-
       const { result, waitForNextUpdate } = renderHook(
-        () => useQuery(query, {
+        () => useQuery1(query, {
           variables: { someVar: 'abc123' },
           partialRefetch: true,
           notifyOnNetworkStatusChange: true,
         }),
-        { wrapper },
+        {
+          wrapper: ({ children }) => (
+            <ApolloProvider client={client}>
+              {children}
+            </ApolloProvider>
+          ),
+        },
       );
 
       // Initial loading render
@@ -1963,16 +1963,7 @@ describe('useQuery Hook', () => {
       await waitForNextUpdate();
       expect(errorSpy).toHaveBeenCalledTimes(1);
       expect(errorSpy.mock.calls[0][0]).toMatch('Missing field');
-      const previous = result.all[result.all.length - 2];
-      if (previous instanceof Error) {
-        throw previous;
-      }
-
-      // `data` is missing and `partialRetch` is true, so a refetch
-      // is triggered and loading is set as true again
-      expect(previous.loading).toBe(true);
-      expect(previous.data).toBe(undefined);
-      expect(previous.networkStatus).toBe(NetworkStatus.loading);
+      errorSpy.mockRestore();
 
       expect(result.current.loading).toBe(true);
       expect(result.current.data).toBe(undefined);
@@ -1984,7 +1975,6 @@ describe('useQuery Hook', () => {
       expect(result.current.data).toEqual(peopleData);
       expect(result.current.networkStatus).toBe(NetworkStatus.ready);
 
-      errorSpy.mockRestore();
     });
   });
 
